@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>TheOne</title>
+  
+  
+  <link href="http://chuyukang.github.io/atom.xml" rel="self"/>
+  
+  <link href="http://chuyukang.github.io/"/>
+  <updated>2023-05-04T07:02:18.391Z</updated>
+  <id>http://chuyukang.github.io/</id>
+  
+  <author>
+    <name>TheOne</name>
+    
+  </author>
+  
+  <generator uri="https://hexo.io/">Hexo</generator>
+  
+  <entry>
+    <title>一个vector遍历引发的惨案</title>
+    <link href="http://chuyukang.github.io/2023/05/04/%E4%B8%80%E4%B8%AAvector%E9%81%8D%E5%8E%86%E5%BC%95%E5%8F%91%E7%9A%84%E6%83%A8%E6%A1%88/"/>
+    <id>http://chuyukang.github.io/2023/05/04/%E4%B8%80%E4%B8%AAvector%E9%81%8D%E5%8E%86%E5%BC%95%E5%8F%91%E7%9A%84%E6%83%A8%E6%A1%88/</id>
+    <published>2023-05-04T06:36:07.000Z</published>
+    <updated>2023-05-04T07:02:18.391Z</updated>
+    
+    <content type="html"><![CDATA[<h2 id="起因"><a href="#起因" class="headerlink" title="起因"></a>起因</h2><p>事情的起因是这样的：某日在用C++的特性写些小demo时，同组的同学看到我在遍历vector后，向我介绍了一个他曾经很费解的Bug。</p><h2 id="问题"><a href="#问题" class="headerlink" title="问题"></a>问题</h2><p>我写的遍历是这样的：</p><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">std::vector&lt;<span class="type">int</span>&gt; vec&#123;<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>,<span class="number">4</span>,<span class="number">5</span>&#125;;</span><br><span class="line"><span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;i&lt;vec.<span class="built_in">size</span>();i++) &#123;</span><br><span class="line">        fmt::<span class="built_in">print</span>(<span class="string">&quot;&#123;&#125; &quot;</span>, vec[i]);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><p>而同学的写法是这样的：</p><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br></pre></td><td class="code"><pre><span class="line">std::vector&lt;<span class="type">int</span>&gt; vec&#123;<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>,<span class="number">4</span>,<span class="number">5</span>&#125;;</span><br><span class="line"><span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;i&lt;=vec.<span class="built_in">size</span>()<span class="number">-1</span>;i++) &#123;</span><br><span class="line">        fmt::<span class="built_in">print</span>(<span class="string">&quot;&#123;&#125; &quot;</span>, vec[i]);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><p>看上去没问题，只是比较条件略做了变化，而且输出也很正常。但是，略作改动之后：</p><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br><span class="line">4</span><br><span class="line">5</span><br></pre></td><td class="code"><pre><span class="line">std::vector&lt;<span class="type">int</span>&gt; vec&#123;<span class="number">1</span>,<span class="number">2</span>,<span class="number">3</span>,<span class="number">4</span>,<span class="number">5</span>&#125;;</span><br><span class="line">vec.<span class="built_in">clear</span>(); <span class="comment">// set vec size to 0</span></span><br><span class="line"><span class="keyword">for</span>(<span class="type">int</span> i=<span class="number">0</span>;i&lt;=vec.<span class="built_in">size</span>()<span class="number">-1</span>;i++) &#123;</span><br><span class="line">        fmt::<span class="built_in">print</span>(<span class="string">&quot;&#123;&#125; &quot;</span>, vec[i]);</span><br><span class="line">&#125;</span><br></pre></td></tr></table></figure><p>这时，程序的输出就很奇怪了：在我的电脑上，本应没有输出的屏幕出现了大段的输出，并最终因为段错误而终止。而原本的写法没有问题。</p><h2 id="分析"><a href="#分析" class="headerlink" title="分析"></a>分析</h2><p>所以，执行这段代码时究竟发生了什么？两段代码的改动仅在比较条件上，通过查询cppreference可知， <code>vec.size()</code> 的返回值类型为 <code>size_type</code>，其定义为g++内部定义的宏 <code>__SIZE_TYPE__</code>，再通过</p><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line"><span class="built_in">echo</span> | g++ -dM -E -x c++ -|nvim -</span><br></pre></td></tr></table></figure><p>查看g++内部定义宏可看到其类型为 <code>long unsigned int</code> ，也就是这里对 <code>unsinged</code> 的减法操作，且理论上得到的结果-1是 <code>unsigned</code> 无法表示的，那C标准是如 何对这个行为定义的呢？</p><p>根据stackoverflow上的回答[1]：从C语言的语义角度理解，该算式的结果-1将会与 <code>UINT_MAX+1</code>进行取模，得到 <code>UINT_MAX</code> 。所以， <code>0≤UINT_MAX</code> 的条件满足，程序根据偏移进行了非法的内存访问，并最终因为访问了无权限的内存页触发段错误终止进程。</p><p>这段程序带来的安全隐患是切实存在的。想象一下在一个后端服务的处理函数中使用了这段程序，而栈上的变量里又存储了历史其他用户请求的数据。那么攻击者就可以构造一个使vector大小为0的输入触发该bug，进而泄漏栈上变量的值。最差的情况下，也能导致服务触发段错误进而不可用。</p><h2 id="总结"><a href="#总结" class="headerlink" title="总结"></a>总结</h2><p>随手一写的简单代码，也有可能在意想不到的地方违背上层的语义。为了避免这样的情况发生，遵循一些常见的准则或者best practice是必要的。</p><p>在这个例子中，我们至少应该避免对 <code>unsigned</code> 类型进行减法，以及避免 <code>signed</code> 和 <code>unsigned</code> 类型之间的比较。</p><p>对于vector的使用，我们可以采取更加不易出错的遍历方法，比如range based loop或者使用迭代器进行遍历，并使用 <code>vec.at(i)</code> 而不是 <code>vec[i]</code> 避免内存越界问 题。</p><figure class="highlight cpp"><table><tr><td class="gutter"><pre><span class="line">1</span><br><span class="line">2</span><br><span class="line">3</span><br></pre></td><td class="code"><pre><span class="line"><span class="keyword">for</span>(<span class="keyword">auto</span> item:vec) &#123;item...&#125;</span><br><span class="line"><span class="keyword">for</span>(<span class="keyword">auto</span> itr=vec.<span class="built_in">begin</span>();itr!=vec.<span class="built_in">end</span>();itr++) &#123;*itr...&#125;</span><br><span class="line"><span class="keyword">for</span>(<span class="type">long</span> unsinged <span class="type">int</span> i=<span class="number">0</span>;i&lt;vec.<span class="built_in">size</span>();i++) &#123;vec.<span class="built_in">at</span>(i)...&#125;</span><br></pre></td></tr></table></figure><p>同时，在写出上述存在内存越界问题的程序的全过程中，编译器以及Lsp没有给出任 何警告和提示，C&#x2F;C++确实容易写出内存不安全的程序，尤其是语言掌握并不熟练的 人。</p><p>但是，仍然有一些工具能够辅助程序员避免这些问题（只是语言不强制使用）</p><ul><li>-Wall, -Wextra提供了额外的warning，对可能存在问题的代码在编译阶段报warning</li><li>Address santinizer，可以在运行时动态检查内存越界行为，在运行时报错提供信息并终止程序</li></ul><p>[1] <a href="https://stackoverflow.com/questions/7221409/is-unsigned-integer-subtraction-defined-behavior">https://stackoverflow.com/questions/7221409/is-unsigned-integer-subtraction-defined-behavior</a></p><p>[2] <a href="https://en.cppreference.com/w/cpp/language/range-for">Range-based for loop - cppreference</a></p>]]></content>
+    
+    
+      
+      
+    <summary type="html">&lt;h2 id=&quot;起因&quot;&gt;&lt;a href=&quot;#起因&quot; class=&quot;headerlink&quot; title=&quot;起因&quot;&gt;&lt;/a&gt;起因&lt;/h2&gt;&lt;p&gt;事情的起因是这样的：某日在用C++的特性写些小demo时，同组的同学看到我在遍历vector后，向我介绍了一个他曾经很费解的Bug。&lt;/p&gt;</summary>
+      
+    
+    
+    
+    
+  </entry>
+  
+  <entry>
+    <title>Hello World</title>
+    <link href="http://chuyukang.github.io/2023/04/03/hello-world/"/>
+    <id>http://chuyukang.github.io/2023/04/03/hello-world/</id>
+    <published>2023-04-03T09:14:59.409Z</published>
+    <updated>2023-04-03T09:14:59.409Z</updated>
+    
+    <content type="html"><![CDATA[<p>Welcome to <a href="https://hexo.io/">Hexo</a>! This is your very first post. Check <a href="https://hexo.io/docs/">documentation</a> for more info. If you get any problems when using Hexo, you can find the answer in <a href="https://hexo.io/docs/troubleshooting.html">troubleshooting</a> or you can ask me on <a href="https://github.com/hexojs/hexo/issues">GitHub</a>.</p><h2 id="Quick-Start"><a href="#Quick-Start" class="headerlink" title="Quick Start"></a>Quick Start</h2><h3 id="Create-a-new-post"><a href="#Create-a-new-post" class="headerlink" title="Create a new post"></a>Create a new post</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo new <span class="string">&quot;My New Post&quot;</span></span><br></pre></td></tr></table></figure><p>More info: <a href="https://hexo.io/docs/writing.html">Writing</a></p><h3 id="Run-server"><a href="#Run-server" class="headerlink" title="Run server"></a>Run server</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo server</span><br></pre></td></tr></table></figure><p>More info: <a href="https://hexo.io/docs/server.html">Server</a></p><h3 id="Generate-static-files"><a href="#Generate-static-files" class="headerlink" title="Generate static files"></a>Generate static files</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo generate</span><br></pre></td></tr></table></figure><p>More info: <a href="https://hexo.io/docs/generating.html">Generating</a></p><h3 id="Deploy-to-remote-sites"><a href="#Deploy-to-remote-sites" class="headerlink" title="Deploy to remote sites"></a>Deploy to remote sites</h3><figure class="highlight bash"><table><tr><td class="gutter"><pre><span class="line">1</span><br></pre></td><td class="code"><pre><span class="line">$ hexo deploy</span><br></pre></td></tr></table></figure><p>More info: <a href="https://hexo.io/docs/one-command-deployment.html">Deployment</a></p>]]></content>
+    
+    
+      
+      
+    <summary type="html">&lt;p&gt;Welcome to &lt;a href=&quot;https://hexo.io/&quot;&gt;Hexo&lt;/a&gt;! This is your very first post. Check &lt;a href=&quot;https://hexo.io/docs/&quot;&gt;documentation&lt;/a&gt; for</summary>
+      
+    
+    
+    
+    
+  </entry>
+  
+</feed>
